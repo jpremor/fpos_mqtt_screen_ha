@@ -1,0 +1,254 @@
+import paho.mqtt.client as mqtt
+import json
+import time
+import ssl
+import os
+from dotenv import load_dotenv
+import subprocess
+import threading
+from evdev import InputDevice, ecodes
+
+# Load environment variables
+load_dotenv()
+BROKER = os.getenv("BROKER_IP")
+PORT = int(os.getenv("BROKER_PORT"))
+USERNAME = os.getenv("BROKER_USERNAME")
+PASSWORD = os.getenv("BROKER_PASSWORD")
+CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
+DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
+TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event0")
+TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "300"))  # default 5 minutes
+
+# Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
+DEVICE_NAME = "BasementUI"
+HA_NAME = "basement_ui"
+
+# MQTT topics (only light entity)
+HA_LIGHT_DISCOVERY_PREFIX = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/config"
+HA_LIGHT_STATE_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/state"
+HA_LIGHT_BRIGHTNESS_STATE_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/brightness"
+HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/brightness/set"
+HA_LIGHT_COMMAND_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/set"
+
+# State variables
+current_state = "OFF"
+current_brightness = 0
+last_brightness = 255
+last_activity = 0
+
+def get_backlight_brightness():
+    path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
+    try:
+        with open(path, "r") as f:
+            return int(f.read().strip())
+    except Exception as e:
+        print(f"Error reading brightness: {e}")
+        return 0
+
+def set_backlight_brightness(value):
+    path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
+    cmd = f"echo {value} | sudo tee {path}"
+    try:
+        subprocess.call(cmd, shell=True)
+    except Exception as e:
+        print(f"Error setting brightness: {e}")
+
+# Callback when connected to MQTT broker
+def on_connect(client, userdata, flags, rc, properties=None):
+    global last_activity
+    if rc == 0:
+        print(f"Connected with result code {rc}")
+        # Publish discovery
+        publish_ha_light_discovery()
+        # Initialize state
+        current_level = get_backlight_brightness()
+        if current_level > 0:
+            current_state = "ON"
+            current_brightness = current_level
+            last_brightness = current_level
+            last_activity = time.time()
+        else:
+            current_state = "OFF"
+            current_brightness = 0
+            last_activity = 0
+        publish_ha_light_state()
+        # Subscribe to commands
+        client.subscribe(HA_LIGHT_COMMAND_TOPIC)
+        client.subscribe(HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC)
+    else:
+        print(f"Connection failed with code {rc}: {mqtt.error_string(rc)}")
+
+# Callback when disconnected
+def on_disconnect(client, userdata, rc, properties=None):
+    print(f"Disconnected with result code {rc}")
+    if rc != 0:
+        print("Unexpected disconnection. Reconnecting...")
+        try:
+            client.reconnect()
+        except Exception as e:
+            print(f"Reconnection failed: {e}")
+
+# Callback when message received
+def on_message(client, userdata, msg):
+    topic = msg.topic
+    payload_str = msg.payload.decode("utf-8").strip()
+
+    if topic == HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC:
+        try:
+            brightness = int(payload_str)
+            process_command({"brightness": brightness})
+        except ValueError:
+            print(f"Invalid brightness: {payload_str}")
+    elif topic == HA_LIGHT_COMMAND_TOPIC:
+        try:
+            command = json.loads(payload_str)
+            process_command(command)
+        except json.JSONDecodeError:
+            print(f"Invalid JSON command: {payload_str}")
+
+def process_command(command):
+    global current_state, current_brightness, last_brightness, last_activity
+    brightness = command.get("brightness")
+    state = command.get("state")
+
+    if brightness is not None:
+        level = max(0, min(255, int(brightness)))
+        new_state = "ON" if level > 0 else "OFF"
+    else:
+        if state == "ON":
+            level = last_brightness
+            new_state = "ON"
+        elif state == "OFF":
+            level = 0
+            new_state = "OFF"
+        else:
+            print("Invalid command")
+            return
+
+    if current_state == "ON" and new_state == "OFF":
+        last_brightness = current_brightness
+
+    set_backlight_brightness(level)
+    current_brightness = level
+    current_state = new_state
+    if current_state == "ON":
+        last_activity = time.time()
+    publish_ha_light_state()
+
+# Discovery payload
+def publish_ha_light_discovery():
+    config = {
+        "name": "Basement UI Backlight",
+        "unique_id": f"basement_ui_backlight",
+        "device": {
+            "identifiers": [DEVICE_NAME],
+            "name": "Basement UI",
+            "manufacturer": "Custom",
+            "model": "Display controller",
+            "sw_version": "1.0"
+        },
+        "state_topic": HA_LIGHT_STATE_TOPIC,
+        "command_topic": HA_LIGHT_COMMAND_TOPIC,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "brightness_state_topic": HA_LIGHT_BRIGHTNESS_STATE_TOPIC,
+        "brightness_command_topic": HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC,
+        "brightness_scale": 255,
+        "brightness": True,
+        "supported_color_modes": ["brightness"],
+        "schema": "json",
+        "optimistic": False
+    }
+    client.publish(HA_LIGHT_DISCOVERY_PREFIX, json.dumps(config), retain=True)
+    print(f"Published light discovery to: {HA_LIGHT_DISCOVERY_PREFIX}")
+
+# State publishing
+def publish_ha_light_state():
+    try:
+        state_data = {"state": current_state}
+        client.publish(HA_LIGHT_STATE_TOPIC, json.dumps(state_data), retain=True)
+        if current_state == "ON":
+            client.publish(HA_LIGHT_BRIGHTNESS_STATE_TOPIC, str(current_brightness), retain=True)
+    except Exception as e:
+        print(f"Error publishing light state: {e}")
+
+# Republish discovery periodically
+def republish_all():
+    publish_ha_light_discovery()
+
+def touch_monitor():
+    global current_state, current_brightness, last_brightness, last_activity
+    try:
+        device = InputDevice(TOUCH_DEVICE)
+        print(f"Touch monitor started on {TOUCH_DEVICE}")
+        for event in device.read_loop():
+            if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
+                print("Touch detected → setting brightness to 255")
+                set_backlight_brightness(255)
+                current_brightness = 255
+                current_state = "ON"
+                last_brightness = 255
+                last_activity = time.time()
+                publish_ha_light_state()
+    except Exception as e:
+        print(f"Touch monitor error: {e}")
+
+# MQTT client setup
+client = mqtt.Client(protocol=mqtt.MQTTv311)
+client.tls_set(ca_certs=CA_CERT, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+if USERNAME and PASSWORD:
+    client.username_pw_set(USERNAME, PASSWORD)
+client.on_connect = on_connect
+client.on_message = on_message
+client.on_disconnect = on_disconnect
+
+try:
+    client.connect(BROKER, PORT)
+except Exception as e:
+    print(f"Connection error: {e}")
+    exit(1)
+
+client.loop_start()
+
+# Start touch monitoring in background
+threading.Thread(target=touch_monitor, daemon=True).start()
+
+# Main loop: republish + external change detection + timeout logic
+last_republish = 0
+try:
+    while True:
+        now = time.time()
+
+        # Periodic republish
+        if now - last_republish > 600:
+            republish_all()
+            last_republish = now
+
+        # Detect external brightness changes
+        current_level = get_backlight_brightness()
+        if current_level != current_brightness:
+            print(f"External brightness change detected: {current_level}")
+            current_brightness = current_level
+            new_state = "ON" if current_level > 0 else "OFF"
+            if current_state == "ON" and new_state == "OFF":
+                last_brightness = current_brightness
+            current_state = new_state
+            if current_state == "ON":
+                last_activity = now
+            publish_ha_light_state()
+
+        # Timeout logic
+        if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
+            print(f"Timeout ({TIMEOUT_SECONDS}s) reached → turning off")
+            last_brightness = current_brightness
+            set_backlight_brightness(0)
+            current_brightness = 0
+            current_state = "OFF"
+            publish_ha_light_state()
+
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("Stopping...")
+finally:
+    client.loop_stop()
+    client.disconnect()

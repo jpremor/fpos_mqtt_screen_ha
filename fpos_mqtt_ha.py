@@ -233,11 +233,16 @@ def republish_all():
 def touch_monitor():
     global current_state, current_brightness, last_brightness, last_activity
     try:
-        device = InputDevice(TOUCH_DEVICE)
-        print(f"Touch monitor started on {TOUCH_DEVICE}")
+        try:
+            device = InputDevice(TOUCH_DEVICE)
+            print(f"Touch monitor started on {TOUCH_DEVICE}", flush=True)
+        except Exception as e:
+            print(f"Failed to open touch device {TOUCH_DEVICE}: {e}", flush=True)
+            return
         for event in device.read_loop():
+            print(f"Touch event: type={event.type}, code={event.code}, value={event.value}", flush=True)
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                print(f"Touch detected at {time.strftime('%Y-%m-%d %H:%M:%S')} → setting brightness to 255 and resetting timeout")
+                print(f"Touch detected at {time.strftime('%Y-%m-%d %H:%M:%S')} → setting brightness to 255 and resetting timeout", flush=True)
                 set_backlight_brightness(255)
                 current_brightness = 255
                 current_state = "ON"

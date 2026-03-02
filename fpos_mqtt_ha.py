@@ -16,7 +16,7 @@ USERNAME = os.getenv("BROKER_USERNAME")
 PASSWORD = os.getenv("BROKER_PASSWORD")
 CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
 DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
-TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event0")
+TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event5")
 TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "300"))  # default 5 minutes
 
 # Home Assistant friendly identifiers (no spaces in DEVICE_NAME)

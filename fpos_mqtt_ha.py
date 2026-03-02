@@ -20,6 +20,11 @@ DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
 TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event5")
 # Load default timeout from .env
 TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
+DIMMING_TO_OFF_SECONDS = int(os.getenv("DIMMING_TO_OFF_SECONDS", "30"))
+
+# Track MQTT connection status
+mqtt_connected = False
+DIMMING_TO_OFF_SECONDS = os.getenv("DIMMING_TO_OFF_SECONDS", "5")
 
 # Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
 DEVICE_NAME = "BasementUI"
@@ -71,7 +76,9 @@ def set_backlight_brightness(value):
 # Callback when connected to MQTT broker
 def on_connect(client, userdata, flags, rc, properties=None):
     global last_activity
+    global mqtt_connected
     if rc == 0:
+        mqtt_connected = True
         print(f"Connected with result code {rc}")
         # Publish discovery
         publish_ha_light_discovery()
@@ -92,11 +99,14 @@ def on_connect(client, userdata, flags, rc, properties=None):
         client.subscribe(HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC)
         client.subscribe(HA_TIMEOUT_NUMBER_COMMAND_TOPIC)
     else:
+        mqtt_connected = False
         print(f"Connection failed with code {rc}: {mqtt.error_string(rc)}")
 
 # Callback when disconnected
 def on_disconnect(client, userdata, rc, properties=None):
     print(f"Disconnected with result code {rc}")
+    global mqtt_connected
+    mqtt_connected = False
     if rc != 0:
         print("Unexpected disconnection. Reconnecting...")
         try:
@@ -137,11 +147,13 @@ def process_command(command):
         level = max(0, min(255, int(brightness)))
         new_state = "ON" if level > 0 else "OFF"
     else:
+    dim_start_time = None
         if state == "ON":
             level = last_brightness
             new_state = "ON"
         elif state == "OFF":
             level = 0
+            if mqtt_connected and now - last_republish > 600:
             new_state = "OFF"
         else:
             print("Invalid command")
@@ -345,7 +357,7 @@ try:
 
         # If DIMMED and 30 seconds passed, turn off
         if current_state == "DIMMED":
-            if now - dim_start_time > 5:
+            if now - dim_start_time > DIMMING_TO_OFF_SECONDS:
                 set_backlight_brightness(0)
                 current_brightness = 0
                 current_state = "OFF"

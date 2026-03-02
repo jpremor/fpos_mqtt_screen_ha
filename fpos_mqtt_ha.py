@@ -147,14 +147,14 @@ def process_command(command):
         level = max(0, min(255, int(brightness)))
         new_state = "ON" if level > 0 else "OFF"
     else:
-    dim_start_time = None
+        dim_start_time = None
         if state == "ON":
             level = last_brightness
             new_state = "ON"
         elif state == "OFF":
             level = 0
             if mqtt_connected and now - last_republish > 600:
-            new_state = "OFF"
+                new_state = "OFF"
         else:
             print("Invalid command")
             return
@@ -322,12 +322,24 @@ threading.Thread(target=touch_monitor, daemon=True).start()
 
 # Main loop: republish + external change detection + timeout logic
 last_republish = 0
+dim_start_time = None
+last_mqtt_attempt = 0
+MQTT_RECONNECT_INTERVAL = 30  # seconds
 try:
     while True:
         now = time.time()
 
-        # Periodic republish
-        if now - last_republish > 600:
+        # Periodic MQTT reconnect attempt if not connected
+        if not mqtt_connected and now - last_mqtt_attempt > MQTT_RECONNECT_INTERVAL:
+            try:
+                client.reconnect()
+                print("Attempting MQTT reconnect...")
+            except Exception as e:
+                print(f"MQTT reconnect failed: {e}")
+            last_mqtt_attempt = now
+
+        # Periodic republish (only if MQTT is connected)
+        if mqtt_connected and now - last_republish > 600:
             republish_all()
             last_republish = now
 
@@ -355,13 +367,14 @@ try:
             dim_start_time = now
             current_state = "DIMMED"
 
-        # If DIMMED and 30 seconds passed, turn off
-        if current_state == "DIMMED":
-            if now - dim_start_time > DIMMING_TO_OFF_SECONDS:
+        # If DIMMED and dim period passed, turn off
+        if current_state == "DIMMED" and dim_start_time is not None:
+            if now - dim_start_time > int(DIMMING_TO_OFF_SECONDS):
                 set_backlight_brightness(0)
                 current_brightness = 0
                 current_state = "OFF"
                 publish_ha_light_state()
+                dim_start_time = None
 
         time.sleep(1)
 except KeyboardInterrupt:

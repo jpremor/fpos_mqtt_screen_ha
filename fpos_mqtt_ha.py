@@ -8,6 +8,7 @@ import subprocess
 import threading
 from evdev import InputDevice, ecodes
 
+from dotenv import set_key
 # Load environment variables
 load_dotenv()
 BROKER = os.getenv("BROKER_IP")
@@ -17,7 +18,8 @@ PASSWORD = os.getenv("BROKER_PASSWORD")
 CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
 DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
 TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event5")
-TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "300"))  # default 5 minutes
+# Load default timeout from .env
+TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
 
 # Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
 DEVICE_NAME = "BasementUI"
@@ -258,7 +260,9 @@ def get_undervoltage_status():
 def set_timeout_seconds(new_timeout):
     global TIMEOUT_SECONDS
     TIMEOUT_SECONDS = max(10, min(3600, int(new_timeout)))
-    print(f"Timeout updated to {TIMEOUT_SECONDS}s from Home Assistant")
+    # Save to .env
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    set_key(env_path, 'LAST_TIMEOUT_SET', str(TIMEOUT_SECONDS))
     client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
     publish_ha_light_state()
 
@@ -271,22 +275,18 @@ def touch_monitor():
     try:
         try:
             device = InputDevice(TOUCH_DEVICE)
-            print(f"Touch monitor started on {TOUCH_DEVICE}", flush=True)
-        except Exception as e:
-            print(f"Failed to open touch device {TOUCH_DEVICE}: {e}", flush=True)
+        except Exception:
             return
         for event in device.read_loop():
-            print(f"Touch event: type={event.type}, code={event.code}, value={event.value}", flush=True)
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                print(f"Touch detected at {time.strftime('%Y-%m-%d %H:%M:%S')} → setting brightness to 255 and resetting timeout", flush=True)
                 set_backlight_brightness(255)
                 current_brightness = 255
                 current_state = "ON"
                 last_brightness = 255
                 last_activity = time.time()
                 publish_ha_light_state()
-    except Exception as e:
-        print(f"Touch monitor error: {e}")
+    except Exception:
+        pass
 
 # MQTT client setup
 client = mqtt.Client(protocol=mqtt.MQTTv311)
@@ -333,13 +333,23 @@ try:
             publish_ha_light_state()
 
         # Timeout logic
+        # If ON and timeout reached, dim to 10% and start dim timer
         if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
-            print(f"Timeout ({TIMEOUT_SECONDS}s) reached → turning off")
             last_brightness = current_brightness
-            set_backlight_brightness(0)
-            current_brightness = 0
-            current_state = "OFF"
+            ten_percent = max(1, int(255 * 0.1))
+            set_backlight_brightness(ten_percent)
+            current_brightness = ten_percent
             publish_ha_light_state()
+            dim_start_time = now
+            current_state = "DIMMED"
+
+        # If DIMMED and 30 seconds passed, turn off
+        if current_state == "DIMMED":
+            if now - dim_start_time > 30:
+                set_backlight_brightness(0)
+                current_brightness = 0
+                current_state = "OFF"
+                publish_ha_light_state()
 
         time.sleep(1)
 except KeyboardInterrupt:

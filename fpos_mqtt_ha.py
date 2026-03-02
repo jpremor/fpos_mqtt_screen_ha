@@ -35,6 +35,9 @@ HA_TIMEOUT_STATE_TOPIC = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_timeout/
 HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/config"
 HA_TIMEOUT_NUMBER_STATE_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/state"
 HA_TIMEOUT_NUMBER_COMMAND_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/set"
+# Undervoltage sensor topics
+HA_UNDERVOLTAGE_DISCOVERY_PREFIX = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_undervoltage/config"
+HA_UNDERVOLTAGE_STATE_TOPIC = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_undervoltage/state"
 
 # State variables
 current_state = "OFF"
@@ -155,6 +158,24 @@ def process_command(command):
 
 # Discovery payload
 def publish_ha_light_discovery():
+        # Undervoltage sensor discovery
+        undervoltage_config = {
+            "name": "Basement UI Undervoltage",
+            "unique_id": f"basement_ui_undervoltage",
+            "device": {
+                "identifiers": [DEVICE_NAME],
+                "name": "Basement UI",
+                "manufacturer": "Raspberry Pi",
+                "model": "Pi",
+                "sw_version": "1.0"
+            },
+            "state_topic": HA_UNDERVOLTAGE_STATE_TOPIC,
+            "icon": "mdi:flash-alert",
+            "entity_category": "diagnostic",
+            "value_template": "{{ value }}"
+        }
+        client.publish(HA_UNDERVOLTAGE_DISCOVERY_PREFIX, json.dumps(undervoltage_config), retain=True)
+        print(f"Published undervoltage sensor discovery to: {HA_UNDERVOLTAGE_DISCOVERY_PREFIX}")
     # Light entity discovery
     config = {
         "name": "Basement UI Backlight",
@@ -214,8 +235,23 @@ def publish_ha_light_state():
             client.publish(HA_LIGHT_BRIGHTNESS_STATE_TOPIC, str(current_brightness), retain=True)
         # Always publish timeout value
         client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
+        # Publish undervoltage status
+        undervoltage = get_undervoltage_status()
+        client.publish(HA_UNDERVOLTAGE_STATE_TOPIC, undervoltage, retain=True)
     except Exception as e:
         print(f"Error publishing light state: {e}")
+# Function to get undervoltage status using vcgencmd
+def get_undervoltage_status():
+    try:
+        result = subprocess.check_output(["vcgencmd", "get_throttled"]).decode("utf-8").strip()
+        # Example output: 'throttled=0x50000'
+        hex_val = result.split('=')[1]
+        val = int(hex_val, 16)
+        # Bit 0: under-voltage detected
+        return "1" if (val & 0x1) else "0"
+    except Exception as e:
+        print(f"Error reading undervoltage status: {e}")
+        return "error"
 
 # Add function to update timeout from HA
 

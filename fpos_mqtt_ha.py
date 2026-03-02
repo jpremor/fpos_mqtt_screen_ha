@@ -237,7 +237,7 @@ def touch_monitor():
         print(f"Touch monitor started on {TOUCH_DEVICE}")
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                print("Touch detected → setting brightness to 255 and resetting timeout")
+                print(f"Touch detected at {time.strftime('%Y-%m-%d %H:%M:%S')} → setting brightness to 255 and resetting timeout")
                 set_backlight_brightness(255)
                 current_brightness = 255
                 current_state = "ON"

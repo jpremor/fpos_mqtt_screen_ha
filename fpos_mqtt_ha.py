@@ -158,24 +158,24 @@ def process_command(command):
 
 # Discovery payload
 def publish_ha_light_discovery():
-        # Undervoltage sensor discovery
-        undervoltage_config = {
-            "name": "Basement UI Undervoltage",
-            "unique_id": f"basement_ui_undervoltage",
-            "device": {
-                "identifiers": [DEVICE_NAME],
-                "name": "Basement UI",
-                "manufacturer": "Raspberry Pi",
-                "model": "Pi",
-                "sw_version": "1.0"
-            },
-            "state_topic": HA_UNDERVOLTAGE_STATE_TOPIC,
-            "icon": "mdi:flash-alert",
-            "entity_category": "diagnostic",
-            "value_template": "{{ value }}"
-        }
-        client.publish(HA_UNDERVOLTAGE_DISCOVERY_PREFIX, json.dumps(undervoltage_config), retain=True)
-        print(f"Published undervoltage sensor discovery to: {HA_UNDERVOLTAGE_DISCOVERY_PREFIX}")
+    # Undervoltage sensor discovery
+    undervoltage_config = {
+        "name": "Basement UI Undervoltage",
+        "unique_id": f"basement_ui_undervoltage",
+        "device": {
+            "identifiers": [DEVICE_NAME],
+            "name": "Basement UI",
+            "manufacturer": "Raspberry Pi",
+            "model": "Pi",
+            "sw_version": "1.0"
+        },
+        "state_topic": HA_UNDERVOLTAGE_STATE_TOPIC,
+        "icon": "mdi:flash-alert",
+        "entity_category": "diagnostic",
+        "value_template": "{{ value }}"
+    }
+    client.publish(HA_UNDERVOLTAGE_DISCOVERY_PREFIX, json.dumps(undervoltage_config), retain=True)
+    print(f"Published undervoltage sensor discovery to: {HA_UNDERVOLTAGE_DISCOVERY_PREFIX}")
     # Light entity discovery
     config = {
         "name": "Basement UI Backlight",

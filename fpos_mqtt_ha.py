@@ -345,7 +345,7 @@ try:
 
         # If DIMMED and 30 seconds passed, turn off
         if current_state == "DIMMED":
-            if now - dim_start_time > 30:
+            if now - dim_start_time > 5:
                 set_backlight_brightness(0)
                 current_brightness = 0
                 current_state = "OFF"

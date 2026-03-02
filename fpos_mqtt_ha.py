@@ -56,6 +56,10 @@ def set_backlight_brightness(value):
     cmd = f"echo {value} | sudo tee {path}"
     try:
         subprocess.call(cmd, shell=True)
+        # Reset timeout if brightness is set above 1% (value > 2)
+        if int(value) > 2:
+            global last_activity
+            last_activity = time.time()
     except Exception as e:
         print(f"Error setting brightness: {e}")
 
@@ -144,7 +148,8 @@ def process_command(command):
     set_backlight_brightness(level)
     current_brightness = level
     current_state = new_state
-    if current_state == "ON":
+    # Reset timeout if brightness is set above 1% or turned on
+    if current_state == "ON" or level > 2:
         last_activity = time.time()
     publish_ha_light_state()
 
@@ -232,7 +237,7 @@ def touch_monitor():
         print(f"Touch monitor started on {TOUCH_DEVICE}")
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                print("Touch detected → setting brightness to 255")
+                print("Touch detected → setting brightness to 255 and resetting timeout")
                 set_backlight_brightness(255)
                 current_brightness = 255
                 current_state = "ON"

@@ -23,12 +23,18 @@ TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "300"))  # default 5 minutes
 DEVICE_NAME = "BasementUI"
 HA_NAME = "basement_ui"
 
-# MQTT topics (only light entity)
 HA_LIGHT_DISCOVERY_PREFIX = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/config"
 HA_LIGHT_STATE_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/state"
 HA_LIGHT_BRIGHTNESS_STATE_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/brightness"
 HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/brightness/set"
 HA_LIGHT_COMMAND_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/set"
+# Timeout sensor topics
+HA_TIMEOUT_DISCOVERY_PREFIX = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_timeout/config"
+HA_TIMEOUT_STATE_TOPIC = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_timeout/state"
+# Timeout number entity topics
+HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/config"
+HA_TIMEOUT_NUMBER_STATE_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/state"
+HA_TIMEOUT_NUMBER_COMMAND_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_timeout/set"
 
 # State variables
 current_state = "OFF"
@@ -75,6 +81,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
         # Subscribe to commands
         client.subscribe(HA_LIGHT_COMMAND_TOPIC)
         client.subscribe(HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC)
+        client.subscribe(HA_TIMEOUT_NUMBER_COMMAND_TOPIC)
     else:
         print(f"Connection failed with code {rc}: {mqtt.error_string(rc)}")
 
@@ -105,6 +112,12 @@ def on_message(client, userdata, msg):
             process_command(command)
         except json.JSONDecodeError:
             print(f"Invalid JSON command: {payload_str}")
+    elif topic == HA_TIMEOUT_NUMBER_COMMAND_TOPIC:
+        try:
+            timeout_val = int(float(payload_str))
+            set_timeout_seconds(timeout_val)
+        except ValueError:
+            print(f"Invalid timeout value: {payload_str}")
 
 def process_command(command):
     global current_state, current_brightness, last_brightness, last_activity
@@ -137,6 +150,7 @@ def process_command(command):
 
 # Discovery payload
 def publish_ha_light_discovery():
+    # Light entity discovery
     config = {
         "name": "Basement UI Backlight",
         "unique_id": f"basement_ui_backlight",
@@ -162,6 +176,30 @@ def publish_ha_light_discovery():
     client.publish(HA_LIGHT_DISCOVERY_PREFIX, json.dumps(config), retain=True)
     print(f"Published light discovery to: {HA_LIGHT_DISCOVERY_PREFIX}")
 
+    # Timeout number entity discovery
+    timeout_number_config = {
+        "name": "Basement UI Backlight Timeout",
+        "unique_id": f"basement_ui_backlight_timeout",
+        "device": {
+            "identifiers": [DEVICE_NAME],
+            "name": "Basement UI",
+            "manufacturer": "Custom",
+            "model": "Display controller",
+            "sw_version": "1.0"
+        },
+        "state_topic": HA_TIMEOUT_NUMBER_STATE_TOPIC,
+        "command_topic": HA_TIMEOUT_NUMBER_COMMAND_TOPIC,
+        "unit_of_measurement": "s",
+        "icon": "mdi:timer",
+        "entity_category": "config",
+        "min": 10,
+        "max": 3600,
+        "step": 1,
+        "mode": "box"
+    }
+    client.publish(HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX, json.dumps(timeout_number_config), retain=True)
+    print(f"Published timeout number discovery to: {HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX}")
+
 # State publishing
 def publish_ha_light_state():
     try:
@@ -169,8 +207,19 @@ def publish_ha_light_state():
         client.publish(HA_LIGHT_STATE_TOPIC, json.dumps(state_data), retain=True)
         if current_state == "ON":
             client.publish(HA_LIGHT_BRIGHTNESS_STATE_TOPIC, str(current_brightness), retain=True)
+        # Always publish timeout value
+        client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
     except Exception as e:
         print(f"Error publishing light state: {e}")
+
+# Add function to update timeout from HA
+
+def set_timeout_seconds(new_timeout):
+    global TIMEOUT_SECONDS
+    TIMEOUT_SECONDS = max(10, min(3600, int(new_timeout)))
+    print(f"Timeout updated to {TIMEOUT_SECONDS}s from Home Assistant")
+    client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
+    publish_ha_light_state()
 
 # Republish discovery periodically
 def republish_all():

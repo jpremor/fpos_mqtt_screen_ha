@@ -190,7 +190,7 @@ def process_command(command):
     if current_state == "ON" and new_state == "OFF":
         last_brightness = current_brightness
 
-    set_backlight_brightness(level)
+    set_backlight_brightness_in_percent(level)
     current_brightness = level
     current_state = new_state
     # Reset timeout if brightness is set above 1% or turned on
@@ -325,7 +325,7 @@ def touch_monitor():
             return
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                set_backlight_brightness(100)
+                set_backlight_brightness_in_percent(100)
                 current_brightness = 100
                 current_state = "ON"
                 last_brightness = 100
@@ -395,7 +395,7 @@ try:
         if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
             last_brightness = current_brightness
             dim_percent = max(1, int(DIMMING_PERCENT / 100))
-            set_backlight_brightness(dim_percent)
+            set_backlight_brightness_in_percent(dim_percent)
             current_brightness = dim_percent
             publish_ha_light_state()
             dim_start_time = now
@@ -404,7 +404,7 @@ try:
         # If DIMMED and dim period passed, turn off
         if current_state == "DIMMED" and dim_start_time is not None:
             if now - dim_start_time > int(DIMMING_TO_OFF_SECONDS):
-                set_backlight_brightness(0)
+                set_backlight_brightness_in_percent(0)
                 current_brightness = 0
                 current_state = "OFF"
                 publish_ha_light_state()

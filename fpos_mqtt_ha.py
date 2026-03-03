@@ -407,7 +407,7 @@ try:
         if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
             print("Inactivity timeout reached, dimming display")
             last_brightness = current_brightness
-            dim_percent = max(1, int(DIMMING_PERCENT / 100))
+            dim_percent = max(1, int(DIMMING_PERCENT))
             set_backlight_brightness_in_percent(dim_percent)
             current_brightness = dim_percent
             publish_ha_light_state()
@@ -417,6 +417,7 @@ try:
         # If DIMMED and dim period passed, turn off
         if current_state == "DIMMED" and dim_start_time is not None:
             if now - dim_start_time > int(DIMMING_TO_OFF_SECONDS):
+                print("Dimming period elapsed, turning off display.")
                 set_backlight_brightness_in_percent(0)
                 current_brightness = 0
                 current_state = "OFF"

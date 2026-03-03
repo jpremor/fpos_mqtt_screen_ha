@@ -172,7 +172,9 @@ def process_command(command):
     state = command.get("state")
 
     if brightness is not None:
-        level = max(0, min(255, int(brightness)))
+        # MQTT brightness is 0-100, convert to 0-255 for device
+        level = max(0, min(100, int(brightness)))
+        hw_level = int(level * 255 / 100)
         new_state = "ON" if level > 0 else "OFF"
     else:
         dim_start_time = None
@@ -189,7 +191,7 @@ def process_command(command):
     if current_state == "ON" and new_state == "OFF":
         last_brightness = current_brightness
 
-    set_backlight_brightness(level)
+        set_backlight_brightness(hw_level)
     current_brightness = level
     current_state = new_state
     # Reset timeout if brightness is set above 1% or turned on

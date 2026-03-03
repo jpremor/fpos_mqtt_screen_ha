@@ -85,14 +85,14 @@ def get_backlight_brightness():
     path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
     try:
         with open(path, "r") as f:
-            return int(f.read().strip()) * 255 // 100
+            return int(f.read().strip() * 255 // 100)
     except Exception as e:
         print(f"Error reading brightness: {e}")
         return 0
 
 def set_backlight_brightness_in_percent(value):
     path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
-    cmd = f"echo {value*255/100} | sudo tee {path}"
+    cmd = f"echo {int(int(value)*255/100)} | sudo tee {path}"
     try:
         subprocess.call(cmd, shell=True)
         # Reset timeout if brightness is set above 1% (value > 2)

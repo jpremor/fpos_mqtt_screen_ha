@@ -403,7 +403,9 @@ try:
 
         # Timeout logic
         # If ON and timeout reached, dim to 10% and start dim timer
+        print(f"Last activity: {int(now - last_activity)}s ago. Dimming in {int(TIMEOUT_SECONDS - (now - last_activity))}s.")
         if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
+            print("Inactivity timeout reached, dimming display")
             last_brightness = current_brightness
             dim_percent = max(1, int(DIMMING_PERCENT / 100))
             set_backlight_brightness_in_percent(dim_percent)

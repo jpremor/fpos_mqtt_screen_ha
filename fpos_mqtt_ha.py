@@ -49,6 +49,15 @@ def find_touch_device():
 TOUCH_DEVICE = find_touch_device()
 print(f"Found touch device: {TOUCH_DEVICE}")
 
+
+# Track MQTT connection status
+mqtt_connected = False
+
+# Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
+DEVICE_NAME = "BasementUI"
+HA_NAME = "basement_ui"
+
+
 TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
 # Dimming timeout and percent, default from .env, can be updated via MQTT
 DIMMING_TO_OFF_SECONDS = int(os.getenv("DIMMING_TO_OFF_SECONDS", "30"))
@@ -60,12 +69,6 @@ HA_DIMMING_TIMEOUT_DISCOVERY_PREFIX = f"homeassistant/number/{DEVICE_NAME}/{HA_N
 HA_DIMMING_TIMEOUT_STATE_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_timeout/state"
 HA_DIMMING_TIMEOUT_COMMAND_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_timeout/set"
 
-# Track MQTT connection status
-mqtt_connected = False
-
-# Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
-DEVICE_NAME = "BasementUI"
-HA_NAME = "basement_ui"
 
 HA_LIGHT_DISCOVERY_PREFIX = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/config"
 HA_LIGHT_STATE_TOPIC = f"homeassistant/light/{DEVICE_NAME}/{HA_NAME}/state"

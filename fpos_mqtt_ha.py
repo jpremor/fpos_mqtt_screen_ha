@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import subprocess
 import threading
 from evdev import InputDevice, ecodes
+from percent_to_raw import *
 
 from dotenv import set_key
 # Load environment variables
@@ -81,26 +82,29 @@ current_brightness = 0
 last_brightness = 100
 last_activity = 0
 
-def get_backlight_brightness():
+def get_backlight_brightness_in_percent():
     path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
     try:
         with open(path, "r") as f:
-            read_brightness = int(f.read().strip())
-            print(f"Read brightness from system {read_brightness * 100 // 255}% (raw: {read_brightness})")
-            return int(read_brightness * 100 // 255 )
+            raw_brightness = int(f.read().strip())
+            percent_brightness = correlate_percent(raw=raw_brightness)
+            print(f"Read brightness from system {percent_brightness}% (raw: {raw_brightness})")
+            return percent_brightness
     except Exception as e:
         print(f"Error reading brightness: {e}")
         return 0
 
 def set_backlight_brightness_in_percent(value):
     path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
-    new_value = int(int(value) * 255 // 100)
+    new_value = int(correlate_percent(percent=int(value)))
+    if new_value < 3:  # Avoid setting to 0 when dimming to very low values
+        new_value = 0
     cmd = f"echo {new_value} | sudo tee {path}"
     try:
         subprocess.call(cmd, shell=True)
         # Reset timeout if brightness is set above 1% (value > 2)
         print(f"Set brightness to {value}% (raw: {new_value})")
-        if int(value) > 2:
+        if int(value) >= 3:
             global last_activity
             last_activity = time.time()
     except Exception as e:
@@ -116,7 +120,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
         # Publish discovery
         publish_ha_light_discovery()
         # Initialize state
-        current_level = get_backlight_brightness()
+        current_level = get_backlight_brightness_in_percent()
         if current_level > 0:
             current_state = "ON"
             current_brightness = current_level
@@ -382,7 +386,7 @@ try:
             last_republish = now
 
         # Detect external brightness changes
-        current_level = get_backlight_brightness()
+        current_level = get_backlight_brightness_in_percent()
         if current_level != current_brightness:
             print(f"External brightness change detected: {current_level}")
             current_brightness = current_level

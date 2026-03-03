@@ -85,7 +85,8 @@ def get_backlight_brightness():
     path = f"/sys/class/backlight/{DISPLAY_NAME}/brightness"
     try:
         with open(path, "r") as f:
-            return int(f.read().strip() * 255 // 100)
+            read_brightness = int(f.read().strip())
+            return int(read_brightness * 255 // 100 )
     except Exception as e:
         print(f"Error reading brightness: {e}")
         return 0

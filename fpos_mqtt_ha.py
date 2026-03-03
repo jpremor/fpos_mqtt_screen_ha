@@ -153,8 +153,7 @@ def process_command(command):
             new_state = "ON"
         elif state == "OFF":
             level = 0
-            if mqtt_connected and now - last_republish > 600:
-                new_state = "OFF"
+            new_state = "OFF"
         else:
             print("Invalid command")
             return

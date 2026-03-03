@@ -336,10 +336,10 @@ def touch_monitor():
             return
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                set_backlight_brightness_in_percent(100)
-                current_brightness = 100
+                # Restore to last set brightness (not 100%)
+                set_backlight_brightness_in_percent(last_brightness)
+                current_brightness = last_brightness
                 current_state = "ON"
-                last_brightness = 100
                 last_activity = time.time()
                 publish_ha_light_state()
     except Exception:

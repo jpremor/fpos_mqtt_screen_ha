@@ -99,7 +99,7 @@ def set_backlight_brightness_in_percent(value):
     new_value = int(correlate_percent(percent=int(value)))
     if new_value < 3:  # Avoid setting to 0 when dimming to very low values
         new_value = 0
-    cmd = f"echo {new_value} | sudo tee {path}"
+    cmd = f"echo {new_value} | sudo tee {path} > /dev/null" 
     print(f"Set brightness to {value}% (raw: {new_value})")
     try:
         subprocess.call(cmd, shell=True)

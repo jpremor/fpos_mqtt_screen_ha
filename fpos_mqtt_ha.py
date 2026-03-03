@@ -88,7 +88,7 @@ def get_backlight_brightness_in_percent():
         with open(path, "r") as f:
             raw_brightness = int(f.read().strip())
             percent_brightness = correlate_percent(raw=raw_brightness)
-            print(f"Read brightness from system {percent_brightness}% (raw: {raw_brightness})")
+            # print(f"Read brightness from system {percent_brightness}% (raw: {raw_brightness})")
             return percent_brightness
     except Exception as e:
         print(f"Error reading brightness: {e}")
@@ -100,10 +100,10 @@ def set_backlight_brightness_in_percent(value):
     if new_value < 3:  # Avoid setting to 0 when dimming to very low values
         new_value = 0
     cmd = f"echo {new_value} | sudo tee {path}"
+    print(f"Set brightness to {value}% (raw: {new_value})")
     try:
         subprocess.call(cmd, shell=True)
         # Reset timeout if brightness is set above 1% (value > 2)
-        print(f"Set brightness to {value}% (raw: {new_value})")
         if int(value) >= 3:
             global last_activity
             last_activity = time.time()
@@ -159,6 +159,7 @@ def on_message(client, userdata, msg):
     if topic == HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC:
         try:
             brightness = int(payload_str)
+            print(f"Received brightness command: {brightness}%")
             process_command({"brightness": brightness})
         except ValueError:
             print(f"Invalid brightness: {payload_str}")
@@ -197,6 +198,8 @@ def process_command(command):
 
     if current_state == "ON" and new_state == "OFF":
         last_brightness = current_brightness
+
+    print(f"Processing command: state={state}, brightness={brightness} -> Setting brightness to {level}% and state to {new_state}")
 
     set_backlight_brightness_in_percent(level)
     current_brightness = level

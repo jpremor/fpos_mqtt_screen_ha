@@ -270,17 +270,23 @@ def publish_ha_light_discovery():
 # State publishing
 def publish_ha_light_state():
     try:
-        state_data = {"state": current_state}
+        # Publish combined JSON state payload (required for schema=json)
+        state_data = {
+            "state": current_state,
+            "brightness": current_brightness
+        }
         client.publish(HA_LIGHT_STATE_TOPIC, json.dumps(state_data), retain=True)
-        if current_state == "ON":
-            client.publish(HA_LIGHT_BRIGHTNESS_STATE_TOPIC, str(current_brightness), retain=True)
-        # Always publish timeout value
+
+        # Publish timeout value
         client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
+
         # Publish undervoltage status
         undervoltage = get_undervoltage_status()
         client.publish(HA_UNDERVOLTAGE_STATE_TOPIC, undervoltage, retain=True)
+
     except Exception as e:
         print(f"Error publishing light state: {e}")
+
 # Function to get undervoltage status using vcgencmd
 def get_undervoltage_status():
     try:

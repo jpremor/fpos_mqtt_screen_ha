@@ -17,7 +17,35 @@ USERNAME = os.getenv("BROKER_USERNAME")
 PASSWORD = os.getenv("BROKER_PASSWORD")
 CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
 DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
-TOUCH_DEVICE = os.getenv("TOUCH_DEVICE", "/dev/input/event5")
+
+# Dynamically find the touch device event number based on DISPLAY_DEVICE_NAME
+def find_touch_device():
+    display_device_name = os.getenv("DISPLAY_DEVICE_NAME", "ft5x06")
+    try:
+        with open("/proc/bus/input/devices", "r") as f:
+            lines = f.readlines()
+        event_num = None
+        found = False
+        for i, line in enumerate(lines):
+            if f'Name="' in line and display_device_name in line:
+                found = True
+            if found and 'Handlers=' in line:
+                parts = line.split()
+                for part in parts:
+                    if part.startswith('event'):
+                        event_num = part
+                        break
+                if event_num:
+                    break
+        if event_num:
+            return f"/dev/input/{event_num}"
+    except Exception as e:
+        print(f"Error finding touch device: {e}")
+    # fallback
+    return os.getenv("TOUCH_DEVICE", "/dev/input/event5")
+
+TOUCH_DEVICE = find_touch_device()
+print(f"Found touch device: {TOUCH_DEVICE}")
 # Load default timeout from .env
 TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
 DIMMING_TO_OFF_SECONDS = int(os.getenv("DIMMING_TO_OFF_SECONDS", "30"))

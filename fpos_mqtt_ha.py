@@ -86,8 +86,8 @@ def get_backlight_brightness():
     try:
         with open(path, "r") as f:
             read_brightness = int(f.read().strip())
-            print(f"Read brightness from system: {read_brightness}")
-            return int(read_brightness * 255 // 100 )
+            print(f"Read brightness from system {read_brightness * 100 // 255}% (raw: {read_brightness})")
+            return int(read_brightness * 100 // 255 )
     except Exception as e:
         print(f"Error reading brightness: {e}")
         return 0

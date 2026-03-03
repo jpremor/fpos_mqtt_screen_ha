@@ -48,13 +48,20 @@ def find_touch_device():
 
 TOUCH_DEVICE = find_touch_device()
 print(f"Found touch device: {TOUCH_DEVICE}")
-# Load default timeout from .env
+
 TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
+# Dimming timeout and percent, default from .env, can be updated via MQTT
 DIMMING_TO_OFF_SECONDS = int(os.getenv("DIMMING_TO_OFF_SECONDS", "30"))
+DIMMING_PERCENT = int(os.getenv("DIMMING_PERCENT", "20"))
+HA_DIMMING_PERCENT_DISCOVERY_PREFIX = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_percent/config"
+HA_DIMMING_PERCENT_STATE_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_percent/state"
+HA_DIMMING_PERCENT_COMMAND_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_percent/set"
+HA_DIMMING_TIMEOUT_DISCOVERY_PREFIX = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_timeout/config"
+HA_DIMMING_TIMEOUT_STATE_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_timeout/state"
+HA_DIMMING_TIMEOUT_COMMAND_TOPIC = f"homeassistant/number/{DEVICE_NAME}/{HA_NAME}_dimming_timeout/set"
 
 # Track MQTT connection status
 mqtt_connected = False
-DIMMING_TO_OFF_SECONDS = os.getenv("DIMMING_TO_OFF_SECONDS", "5")
 
 # Home Assistant friendly identifiers (no spaces in DEVICE_NAME)
 DEVICE_NAME = "BasementUI"
@@ -175,6 +182,38 @@ def on_message(client, userdata, msg):
             set_timeout_seconds(timeout_val)
         except ValueError:
             print(f"Invalid timeout value: {payload_str}")
+    elif topic == HA_DIMMING_TIMEOUT_COMMAND_TOPIC:
+        try:
+            dimming_val = int(float(payload_str))
+            set_dimming_timeout_seconds(dimming_val)
+        except ValueError:
+            print(f"Invalid dimming timeout value: {payload_str}")
+    elif topic == HA_DIMMING_PERCENT_COMMAND_TOPIC:
+        try:
+            percent_val = int(float(payload_str))
+            set_dimming_percent(percent_val)
+        except ValueError:
+            print(f"Invalid dimming percent value: {payload_str}")
+
+# Add function to update dimming percent from HA
+def set_dimming_percent(new_percent):
+    global DIMMING_PERCENT
+    DIMMING_PERCENT = max(1, min(100, int(new_percent)))
+    # Save to .env
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    set_key(env_path, 'DIMMING_PERCENT', str(DIMMING_PERCENT))
+    client.publish(HA_DIMMING_PERCENT_STATE_TOPIC, str(DIMMING_PERCENT), retain=True)
+    publish_ha_light_state()
+
+# Add function to update dimming timeout from HA
+def set_dimming_timeout_seconds(new_timeout):
+    global DIMMING_TO_OFF_SECONDS
+    DIMMING_TO_OFF_SECONDS = max(1, min(600, int(new_timeout)))
+    # Save to .env
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    set_key(env_path, 'DIMMING_TO_OFF_SECONDS', str(DIMMING_TO_OFF_SECONDS))
+    client.publish(HA_DIMMING_TIMEOUT_STATE_TOPIC, str(DIMMING_TO_OFF_SECONDS), retain=True)
+    publish_ha_light_state()
 
 def process_command(command):
     global current_state, current_brightness, last_brightness, last_activity
@@ -211,6 +250,29 @@ def process_command(command):
 
 # Discovery payload
 def publish_ha_light_discovery():
+    # Dimming percent number entity discovery
+    dimming_percent_config = {
+        "name": "Basement UI Dimming Percent",
+        "unique_id": f"basement_ui_dimming_percent",
+        "device": {
+            "identifiers": [DEVICE_NAME],
+            "name": "Basement UI",
+            "manufacturer": "Custom",
+            "model": "Display controller",
+            "sw_version": "1.0"
+        },
+        "state_topic": HA_DIMMING_PERCENT_STATE_TOPIC,
+        "command_topic": HA_DIMMING_PERCENT_COMMAND_TOPIC,
+        "unit_of_measurement": "%",
+        "icon": "mdi:brightness-6",
+        "entity_category": "config",
+        "min": 1,
+        "max": 100,
+        "step": 1,
+        "mode": "box"
+    }
+    client.publish(HA_DIMMING_PERCENT_DISCOVERY_PREFIX, json.dumps(dimming_percent_config), retain=True)
+    print(f"Published dimming percent number discovery to: {HA_DIMMING_PERCENT_DISCOVERY_PREFIX}")
     # Undervoltage sensor discovery
     undervoltage_config = {
         "name": "Basement UI Undervoltage",
@@ -278,6 +340,30 @@ def publish_ha_light_discovery():
     }
     client.publish(HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX, json.dumps(timeout_number_config), retain=True)
     print(f"Published timeout number discovery to: {HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX}")
+
+    # Dimming timeout number entity discovery
+    dimming_timeout_config = {
+        "name": "Basement UI Dimming Timeout",
+        "unique_id": f"basement_ui_dimming_timeout",
+        "device": {
+            "identifiers": [DEVICE_NAME],
+            "name": "Basement UI",
+            "manufacturer": "Custom",
+            "model": "Display controller",
+            "sw_version": "1.0"
+        },
+        "state_topic": HA_DIMMING_TIMEOUT_STATE_TOPIC,
+        "command_topic": HA_DIMMING_TIMEOUT_COMMAND_TOPIC,
+        "unit_of_measurement": "s",
+        "icon": "mdi:timer-sand",
+        "entity_category": "config",
+        "min": 1,
+        "max": 600,
+        "step": 1,
+        "mode": "box"
+    }
+    client.publish(HA_DIMMING_TIMEOUT_DISCOVERY_PREFIX, json.dumps(dimming_timeout_config), retain=True)
+    print(f"Published dimming timeout number discovery to: {HA_DIMMING_TIMEOUT_DISCOVERY_PREFIX}")
 
 # State publishing
 def publish_ha_light_state():
@@ -403,16 +489,17 @@ try:
 
         # Timeout logic
         # If ON and timeout reached, dim to 10% and start dim timer
-        print(f"Last activity: {int(now - last_activity)}s ago. Dimming in {int(TIMEOUT_SECONDS - (now - last_activity))}s.")
-        if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
-            print("Inactivity timeout reached, dimming display")
-            last_brightness = current_brightness
-            dim_percent = max(1, int(DIMMING_PERCENT))
-            set_backlight_brightness_in_percent(dim_percent)
-            current_brightness = dim_percent
-            publish_ha_light_state()
-            dim_start_time = now
-            current_state = "DIMMED"
+        if current_state == "ON":
+            print(f"Last activity: {int(now - last_activity)}s ago. Dimming in {int(TIMEOUT_SECONDS - (now - last_activity))}s.")
+            if now - last_activity > TIMEOUT_SECONDS:
+                print("Inactivity timeout reached, dimming display")
+                last_brightness = current_brightness
+                dim_percent = max(1, int(DIMMING_PERCENT))
+                set_backlight_brightness_in_percent(dim_percent)
+                current_brightness = dim_percent
+                publish_ha_light_state()
+                dim_start_time = now
+                current_state = "DIMMED"
 
         # If DIMMED and dim period passed, turn off
         if current_state == "DIMMED" and dim_start_time is not None:

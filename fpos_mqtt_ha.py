@@ -17,6 +17,7 @@ USERNAME = os.getenv("BROKER_USERNAME")
 PASSWORD = os.getenv("BROKER_PASSWORD")
 CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
 DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
+DIMMING_PERCENT = int(os.getenv("DIMMING_PERCENT", "20"))
 
 # Dynamically find the touch device event number based on DISPLAY_DEVICE_NAME
 def find_touch_device():
@@ -77,7 +78,7 @@ HA_UNDERVOLTAGE_STATE_TOPIC = f"homeassistant/sensor/{DEVICE_NAME}/{HA_NAME}_und
 # State variables
 current_state = "OFF"
 current_brightness = 0
-last_brightness = 255
+last_brightness = 100
 last_activity = 0
 
 def get_backlight_brightness():
@@ -172,9 +173,7 @@ def process_command(command):
     state = command.get("state")
 
     if brightness is not None:
-        # MQTT brightness is 0-100, convert to 0-255 for device
         level = max(0, min(100, int(brightness)))
-        hw_level = int(level * 255 / 100)
         new_state = "ON" if level > 0 else "OFF"
     else:
         dim_start_time = None
@@ -191,7 +190,7 @@ def process_command(command):
     if current_state == "ON" and new_state == "OFF":
         last_brightness = current_brightness
 
-        set_backlight_brightness(hw_level)
+    set_backlight_brightness(level)
     current_brightness = level
     current_state = new_state
     # Reset timeout if brightness is set above 1% or turned on
@@ -236,7 +235,7 @@ def publish_ha_light_discovery():
         "payload_off": "OFF",
         "brightness_state_topic": HA_LIGHT_BRIGHTNESS_STATE_TOPIC,
         "brightness_command_topic": HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC,
-        "brightness_scale": 255,
+        "brightness_scale": 100,
         "brightness": True,
         "supported_color_modes": ["brightness"],
         "schema": "json",
@@ -326,10 +325,10 @@ def touch_monitor():
             return
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_TOUCH and event.value == 1:
-                set_backlight_brightness(255)
-                current_brightness = 255
+                set_backlight_brightness(100)
+                current_brightness = 100
                 current_state = "ON"
-                last_brightness = 255
+                last_brightness = 100
                 last_activity = time.time()
                 publish_ha_light_state()
     except Exception:
@@ -395,9 +394,9 @@ try:
         # If ON and timeout reached, dim to 10% and start dim timer
         if current_state == "ON" and now - last_activity > TIMEOUT_SECONDS:
             last_brightness = current_brightness
-            ten_percent = max(1, int(255 * 0.1))
-            set_backlight_brightness(ten_percent)
-            current_brightness = ten_percent
+            dim_percent = max(1, int(DIMMING_PERCENT / 100))
+            set_backlight_brightness(dim_percent)
+            current_brightness = dim_percent
             publish_ha_light_state()
             dim_start_time = now
             current_state = "DIMMED"

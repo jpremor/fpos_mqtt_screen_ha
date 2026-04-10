@@ -321,9 +321,14 @@ def touch_monitor():
     except Exception:
         pass
 
-# MQTT setup
+
+# MQTT setup with CA cert check
 client = mqtt.Client(protocol=mqtt.MQTTv311)
-client.tls_set(ca_certs=CA_CERT, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+if os.path.isfile(CA_CERT):
+    client.tls_set(ca_certs=CA_CERT, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+    print(f"Using CA certificate at {CA_CERT} for TLS connection.")
+else:
+    print(f"CA certificate not found at {CA_CERT}. Connecting without TLS (username/password only).")
 if USERNAME and PASSWORD:
     client.username_pw_set(USERNAME, PASSWORD)
 client.on_connect = on_connect

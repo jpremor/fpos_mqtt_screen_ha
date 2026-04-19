@@ -17,7 +17,7 @@ BROKER = os.getenv("BROKER_IP")
 PORT = int(os.getenv("BROKER_PORT"))
 USERNAME = os.getenv("BROKER_USERNAME")
 PASSWORD = os.getenv("BROKER_PASSWORD")
-CA_CERT = os.path.join(os.path.dirname(__file__), "ca.crt")
+CA_CERT = "/tmp-remorh/ca.crt"
 DISPLAY_NAME = os.getenv("DISPLAY_NAME", "10-0045")
 DIMMING_PERCENT = int(os.getenv("DIMMING_PERCENT", "20"))
 
@@ -380,6 +380,8 @@ try:
         if current_level != current_brightness:
             print(f"External brightness change: {current_level}%")
             current_brightness = current_level
+            if current_level is None:
+                current_level = 0
             new_state = "ON" if current_level > 0 else "OFF"
             if current_state == "ON" and new_state == "OFF":
                 last_brightness = current_brightness

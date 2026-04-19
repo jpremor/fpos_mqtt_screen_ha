@@ -1,6 +1,7 @@
 [Unit]
 Description=Run Display control Python script at startup
 After=network.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -8,6 +9,7 @@ ExecStart=/usr/bin/python3 /home/jpremor/fpos_mqtt_ha/fpos_mqtt_ha.py
 WorkingDirectory=/home/jpremor/fpos_mqtt_ha
 Restart=always
 User=jpremor
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

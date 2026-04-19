@@ -14,3 +14,11 @@ B: PROP=2
 B: EV=b
 B: KEY=400 0 0 0 0 0 0 0 0 0 0
 B: ABS=2608000 3
+
+
+## location of pictures to update
+
+/opt/custompios/background.png
+/boot/firmware/splash.png
+/var/www/html/FullPageDashboard-orig/img/logo.png
+/var/www/html/welcome/images/fullpageos/20230515-fullpageos-welcome-bg-wildchild-1920x1080-3.png

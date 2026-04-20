@@ -329,8 +329,8 @@ if os.path.isfile(CA_CERT):
     print(f"Using CA certificate at {CA_CERT} for TLS connection.")
 else:
     print(f"CA certificate not found at {CA_CERT}. Connecting without TLS (username/password only).")
-if USERNAME and PASSWORD:
-    client.username_pw_set(USERNAME, PASSWORD)
+    if USERNAME and PASSWORD:
+        client.username_pw_set(USERNAME, PASSWORD)
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_disconnect = on_disconnect
@@ -339,7 +339,6 @@ try:
     client.connect(BROKER, PORT)
 except Exception as e:
     print(f"Connection error: {e}")
-    exit(1)
 
 client.loop_start()
 

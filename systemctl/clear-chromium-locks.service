@@ -1,0 +1,16 @@
+#!/bin/bash
+# =============================================
+# Clear Chromium locks on boot - FullPageOS / HA Kiosk
+# =============================================
+
+echo "[$(date)] Clearing Chromium locks..." >> /var/log/chromium-locks.log
+
+# Clear singleton locks
+rm -rf /home/haui/.config/chromium/Singleton* 2>/dev/null
+
+# Clear Chromium recovery files
+rm -f /home/haui/.config/chromium/Default/.org.chromium.Chromium.* 2>/dev/null
+
+echo "[$(date)] Chromium locks cleared successfully" >> /var/log/chromium-locks.log
+
+exit 0

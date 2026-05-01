@@ -9,6 +9,7 @@ import threading
 from evdev import InputDevice, ecodes
 from percent_to_raw import *
 from dotenv import set_key
+import socket
 
 # Load environment variables
 load_dotenv()
@@ -53,9 +54,13 @@ print(f"Found touch device: {TOUCH_DEVICE}")
 # Track MQTT connection status
 mqtt_connected = False
 
+# Get hostname
+HOSTNAME = socket.gethostname()
+
 # Home Assistant friendly identifiers
-DEVICE_NAME = "BasementUI"
-HA_NAME = "basement_ui"
+DEVICE_NAME = HOSTNAME
+HA_NAME = HOSTNAME.replace(" ", "-").lower()
+print(f"Using DEVICE_NAME='{DEVICE_NAME}' and HA_NAME='{HA_NAME}' for MQTT topics")
 
 TIMEOUT_SECONDS = int(os.getenv("LAST_TIMEOUT_SET", os.getenv("TIMEOUT_SECONDS", "300")))
 DIMMING_TO_OFF_SECONDS = int(os.getenv("DIMMING_TO_OFF_SECONDS", "30"))
@@ -128,7 +133,11 @@ def on_connect(client, userdata, flags, rc, properties=None):
         client.publish(HA_DIMMING_PERCENT_STATE_TOPIC, str(DIMMING_PERCENT), retain=True)
         client.publish(HA_DIMMING_TIMEOUT_STATE_TOPIC, str(DIMMING_TO_OFF_SECONDS), retain=True)
 
-        # Then publish discovery
+        # Publish undervoltage state immediately so sensor appears with value
+        undervoltage = get_undervoltage_status()
+        client.publish(HA_UNDERVOLTAGE_STATE_TOPIC, undervoltage, retain=True)
+
+        # Then publish discovery (now includes undervoltage + light)
         publish_ha_light_discovery()
 
         # Subscribe
@@ -231,13 +240,13 @@ def process_command(command):
 
     publish_ha_light_state()
 
-# Discovery
+# Discovery - now includes undervoltage sensor + light entity
 def publish_ha_light_discovery():
     # Dimming percent
     dimming_percent_config = {
-        "name": "Basement UI Dimming Percent",
-        "unique_id": f"basement_ui_dimming_percent",
-        "device": {"identifiers": [DEVICE_NAME], "name": "Basement UI", "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
+        "name": "HAUI Dimming Percent",
+        "unique_id": f"{HA_NAME}_dimming_percent",
+        "device": {"identifiers": [DEVICE_NAME], "name": HA_NAME, "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
         "state_topic": HA_DIMMING_PERCENT_STATE_TOPIC,
         "command_topic": HA_DIMMING_PERCENT_COMMAND_TOPIC,
         "unit_of_measurement": "%",
@@ -250,9 +259,9 @@ def publish_ha_light_discovery():
 
     # Dimming timeout
     dimming_timeout_config = {
-        "name": "Basement UI Dimming Timeout",
-        "unique_id": f"basement_ui_dimming_timeout",
-        "device": {"identifiers": [DEVICE_NAME], "name": "Basement UI", "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
+        "name": "HAUI Dimming Timeout",
+        "unique_id": f"{HA_NAME}_dimming_timeout",
+        "device": {"identifiers": [DEVICE_NAME], "name": HA_NAME, "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
         "state_topic": HA_DIMMING_TIMEOUT_STATE_TOPIC,
         "command_topic": HA_DIMMING_TIMEOUT_COMMAND_TOPIC,
         "unit_of_measurement": "s",
@@ -265,9 +274,9 @@ def publish_ha_light_discovery():
 
     # Timeout number
     timeout_number_config = {
-        "name": "Basement UI Backlight Timeout",
-        "unique_id": f"basement_ui_backlight_timeout",
-        "device": {"identifiers": [DEVICE_NAME], "name": "Basement UI", "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
+        "name": "HAUI Backlight Timeout",
+        "unique_id": f"{HA_NAME}_backlight_timeout",
+        "device": {"identifiers": [DEVICE_NAME], "name": HA_NAME, "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
         "state_topic": HA_TIMEOUT_NUMBER_STATE_TOPIC,
         "command_topic": HA_TIMEOUT_NUMBER_COMMAND_TOPIC,
         "unit_of_measurement": "s",
@@ -278,14 +287,44 @@ def publish_ha_light_discovery():
     client.publish(HA_TIMEOUT_NUMBER_DISCOVERY_PREFIX, json.dumps(timeout_number_config), retain=True)
     print(f"Published timeout number discovery")
 
-    # Light entity (omitted full config for brevity - keep your original if needed)
-    # ... your light + undervoltage discovery here ...
+    # Undervoltage sensor (FIX: was missing, so entity never appeared in HA)
+    undervoltage_config = {
+        "name": "HAUI Undervoltage",
+        "unique_id": f"{HA_NAME}_undervoltage",
+        "device": {"identifiers": [DEVICE_NAME], "name": HA_NAME, "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
+        "state_topic": HA_UNDERVOLTAGE_STATE_TOPIC,
+        "icon": "mdi:flash-alert",
+        "entity_category": "diagnostic",
+        "device_class": "problem",
+        "payload_on": "1",
+        "payload_off": "0"
+    }
+    client.publish(HA_UNDERVOLTAGE_DISCOVERY_PREFIX, json.dumps(undervoltage_config), retain=True)
+    print(f"Published undervoltage discovery")
+
+    # Light entity
+    light_config = {
+        "name": "HAUI Backlight",
+        "unique_id": f"{HA_NAME}_backlight",
+        "device": {"identifiers": [DEVICE_NAME], "name": HA_NAME, "manufacturer": "Custom", "model": "Display controller", "sw_version": "1.0"},
+        "state_topic": HA_LIGHT_STATE_TOPIC,
+        "command_topic": HA_LIGHT_COMMAND_TOPIC,
+        "brightness_state_topic": HA_LIGHT_BRIGHTNESS_STATE_TOPIC,
+        "brightness_command_topic": HA_LIGHT_BRIGHTNESS_COMMAND_TOPIC,
+        "brightness_scale": 100,
+        "icon": "mdi:monitor",
+        "supported_color_modes": ["brightness"],
+        "color_mode": "brightness"
+    }
+    client.publish(HA_LIGHT_DISCOVERY_PREFIX, json.dumps(light_config), retain=True)
+    print(f"Published light discovery")
 
 # State publishing
 def publish_ha_light_state():
     try:
         state_data = {"state": current_state, "brightness": current_brightness}
         client.publish(HA_LIGHT_STATE_TOPIC, json.dumps(state_data), retain=True)
+        client.publish(HA_LIGHT_BRIGHTNESS_STATE_TOPIC, str(current_brightness), retain=True)
         client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
         client.publish(HA_DIMMING_PERCENT_STATE_TOPIC, str(DIMMING_PERCENT), retain=True)
         client.publish(HA_DIMMING_TIMEOUT_STATE_TOPIC, str(DIMMING_TO_OFF_SECONDS), retain=True)
@@ -293,7 +332,7 @@ def publish_ha_light_state():
         undervoltage = get_undervoltage_status()
         client.publish(HA_UNDERVOLTAGE_STATE_TOPIC, undervoltage, retain=True)
 
-        print(f"Published states: timeout={TIMEOUT_SECONDS}s, dim %={DIMMING_PERCENT}%, dim to off={DIMMING_TO_OFF_SECONDS}s")
+        print(f"Published states: timeout={TIMEOUT_SECONDS}s, dim %={DIMMING_PERCENT}%, dim to off={DIMMING_TO_OFF_SECONDS}s, undervoltage={undervoltage}")
     except Exception as e:
         print(f"Error publishing state: {e}")
 
@@ -348,6 +387,8 @@ print("Initial state publish (safety)...")
 client.publish(HA_TIMEOUT_NUMBER_STATE_TOPIC, str(TIMEOUT_SECONDS), retain=True)
 client.publish(HA_DIMMING_PERCENT_STATE_TOPIC, str(DIMMING_PERCENT), retain=True)
 client.publish(HA_DIMMING_TIMEOUT_STATE_TOPIC, str(DIMMING_TO_OFF_SECONDS), retain=True)
+undervoltage = get_undervoltage_status()
+client.publish(HA_UNDERVOLTAGE_STATE_TOPIC, undervoltage, retain=True)
 
 # Start touch monitoring
 threading.Thread(target=touch_monitor, daemon=True).start()
@@ -402,14 +443,16 @@ try:
                 current_state = "DIMMED"
 
         # Dimmed → off logic
-        if current_state == "DIMMED" and dim_start_time is not None:
-            if now - dim_start_time > DIMMING_TO_OFF_SECONDS:
-                print("Dim period over → turning off")
-                set_backlight_brightness_in_percent(0)
-                current_brightness = 0
-                current_state = "OFF"
-                publish_ha_light_state()
-                dim_start_time = None
+        # FIX: if dimming timeout is set to max (600), never turn backlight to zero
+        if (current_state == "DIMMED" and dim_start_time is not None
+                and DIMMING_TO_OFF_SECONDS < 600
+                and now - dim_start_time > DIMMING_TO_OFF_SECONDS):
+            print("Dim period over → turning off")
+            set_backlight_brightness_in_percent(0)
+            current_brightness = 0
+            current_state = "OFF"
+            publish_ha_light_state()
+            dim_start_time = None
 
         time.sleep(1)
 
